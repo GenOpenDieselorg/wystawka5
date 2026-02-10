@@ -14,6 +14,15 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
     super('allegro');
   }
 
+  _validateOfferId(offerId) {
+    if (!offerId) throw new Error('Offer ID is required');
+    const id = String(offerId);
+    if (!/^[a-zA-Z0-9-]+$/.test(id)) {
+        throw new Error('Invalid offerId format (alphanumeric only)');
+    }
+    return id;
+  }
+
   async testConnection(accessToken, refreshToken = null) {
     // First try with current token
     let result = await this._testAllegroConnection(accessToken, refreshToken);
@@ -810,6 +819,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
 
   async deleteOffer(authData, externalId) {
     try {
+      this._validateOfferId(externalId);
       let accessToken;
       
       // Extract access token from authData (can be integration object or token string)
@@ -849,6 +859,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Helper: Get offer details
   async getOffer(authData, offerId) {
     try {
+      this._validateOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
       const response = await axios.get(`https://api.allegro.pl/sale/product-offers/${offerId}`, {
         headers: {
@@ -866,6 +877,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Helper: Update offer (full PUT)
   async updateOffer(authData, offerId, payload) {
     try {
+      this._validateOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
       const response = await axios.patch(`https://api.allegro.pl/sale/product-offers/${offerId}`, payload, {
         headers: {

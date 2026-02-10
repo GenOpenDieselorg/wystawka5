@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const morgan = require('morgan');
 const logger = require('./utils/logger');
 const requestIdMiddleware = require('./middleware/requestId');
 const reportToDiscord = require('./utils/discordReporter');
@@ -178,19 +179,15 @@ app.use(idempotencyMiddleware);
 // Sanityzacja XSS
 app.use(xssSanitizer);
 
-// Request logging middleware
-app.use((req, res, next) => {
-  // Maskowanie wrażliwych danych w URL
-  let safeUrl = req.url;
+// Define custom token for masked URL
+morgan.token('safe-url', (req) => {
+  let safeUrl = req.originalUrl || req.url;
   try {
-    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const urlObj = new URL(safeUrl, `http://${req.headers.host || 'localhost'}`);
     const sensitiveKeys = ['token', 'password', 'key', 'secret', 'authorization', 'access_token', 'refresh_token', 'code'];
     let modified = false;
 
-    // Klonujemy parametry, żeby nie modyfikować oryginału (chociaż URL object jest nowy)
     const searchParams = new URLSearchParams(urlObj.search);
-    
-    // Iterujemy po kluczach i maskujemy
     for (const key of searchParams.keys()) {
       if (sensitiveKeys.some(k => key.toLowerCase().includes(k))) {
         searchParams.set(key, '***MASKED***');
@@ -202,13 +199,15 @@ app.use((req, res, next) => {
       safeUrl = urlObj.pathname + '?' + searchParams.toString();
     }
   } catch (e) {
-    // W przypadku błędu parsowania logujemy samą ścieżkę bez query stringa dla bezpieczeństwa
     if (req.path) safeUrl = req.path;
   }
-
-  logger.info(`${req.method} ${safeUrl} - Origin: ${req.headers.origin || 'unknown'} - IP: ${req.ip}`);
-  next();
+  return safeUrl;
 });
+
+// Request logging middleware (using Morgan with Winston stream)
+app.use(morgan(':method :safe-url :status :res[content-length] - :response-time ms - IP: :remote-addr', {
+  stream: { write: message => logger.info(message.trim()) }
+}));
 
 // SECURITY: Monitoring Middleware
 app.use(monitorAccessPatterns);

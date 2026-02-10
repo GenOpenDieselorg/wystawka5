@@ -134,7 +134,7 @@ const checkAndChargeIfReady = async (userId, productId, newStatus) => {
 // Helper function to get product with images
 const getProductWithImages = async (productId) => {
   const [products] = await db.execute(
-    'SELECT * FROM products WHERE id = ?',
+    'SELECT * FROM products WHERE id = ? AND deleted_at IS NULL',
     [productId]
   );
   
@@ -159,7 +159,7 @@ const getProductWithImages = async (productId) => {
 // Helper function to get products with images for a user
 const getProductsWithImages = async (userId) => {
   const [products] = await db.execute(
-    'SELECT * FROM products WHERE user_id = ?',
+    'SELECT * FROM products WHERE user_id = ? AND deleted_at IS NULL',
     [userId]
   );
   
@@ -845,7 +845,7 @@ router.get('/gallery', authenticate, async (req, res) => {
 
     // Get all products for the user
     const [products] = await db.execute(
-      'SELECT id, product_name FROM products WHERE user_id = ?',
+      'SELECT id, product_name FROM products WHERE user_id = ? AND deleted_at IS NULL',
       [userId]
     );
 
@@ -919,7 +919,7 @@ router.get('/warehouse', authenticate, async (req, res) => {
 
     // Get all 'done' and 'sold' products for user
     const [products] = await db.execute(
-      'SELECT * FROM products WHERE user_id = ? AND status IN (?, ?) ORDER BY updated_at DESC',
+      'SELECT * FROM products WHERE user_id = ? AND status IN (?, ?) AND deleted_at IS NULL ORDER BY updated_at DESC',
       [userId, 'done', 'sold']
     );
 
@@ -1965,7 +1965,7 @@ router.post('/bulk-mark-sold', authenticate, async (req, res) => {
   }
 });
 
-// Bulk delete products
+// Bulk delete products (soft delete)
 router.post('/bulk-delete', authenticate, async (req, res) => {
   try {
     const { productIds } = req.body;
@@ -1978,7 +1978,7 @@ router.post('/bulk-delete', authenticate, async (req, res) => {
     // Verify ownership
     const placeholders = productIds.map(() => '?').join(',');
     const [products] = await db.execute(
-      `SELECT * FROM products WHERE id IN (${placeholders}) AND user_id = ?`,
+      `SELECT * FROM products WHERE id IN (${placeholders}) AND user_id = ? AND deleted_at IS NULL`,
       [...productIds, userId]
     );
 
@@ -1992,45 +1992,8 @@ router.post('/bulk-delete', authenticate, async (req, res) => {
 
     for (const product of products) {
       try {
-        // Get product images to delete files
-        const [images] = await db.execute(
-          'SELECT * FROM product_images WHERE product_id = ?',
-          [product.id]
-        );
-
-        // Delete image files
-        for (const img of images) {
-          if (img.image_url) {
-            try {
-              const imagePath = path.join(__dirname, '../..', img.image_url);
-              // SECURITY: Validate path before deletion
-              const safePath = validatePath(imagePath);
-              if (fs.existsSync(safePath)) {
-                fs.unlinkSync(safePath);
-              }
-            } catch (e) {
-              console.warn('File deletion skipped:', e.message);
-            }
-          }
-          if (img.processed_image_url) {
-            try {
-              const processedPath = path.join(__dirname, '../..', img.processed_image_url);
-              // SECURITY: Validate path before deletion
-              const safePath = validatePath(processedPath);
-              if (fs.existsSync(safePath)) {
-                fs.unlinkSync(safePath);
-              }
-            } catch (e) {
-              console.warn('File deletion skipped:', e.message);
-            }
-          }
-        }
-
-        // Delete product images from database
-        await db.execute('DELETE FROM product_images WHERE product_id = ?', [product.id]);
-
-        // Delete product
-        await db.execute('DELETE FROM products WHERE id = ?', [product.id]);
+        // Soft delete product
+        await db.execute('UPDATE products SET deleted_at = NOW() WHERE id = ?', [product.id]);
 
         results.push({
           productId: product.id,
@@ -2062,7 +2025,7 @@ router.post('/bulk-delete', authenticate, async (req, res) => {
   }
 });
 
-// Delete product
+// Delete product (soft delete)
 router.delete('/:id', authenticate, checkResourceOwnership('products'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -2070,7 +2033,7 @@ router.delete('/:id', authenticate, checkResourceOwnership('products'), async (r
 
     // Get product to check if it exists (ownership confirmed by middleware)
     const [products] = await db.execute(
-      'SELECT * FROM products WHERE id = ?',
+      'SELECT * FROM products WHERE id = ? AND deleted_at IS NULL',
       [id]
     );
 
@@ -2078,45 +2041,11 @@ router.delete('/:id', authenticate, checkResourceOwnership('products'), async (r
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Get product images to delete files
-    const [images] = await db.execute(
-      'SELECT * FROM product_images WHERE product_id = ?',
-      [id]
-    );
+    // Soft delete product
+    await db.execute('UPDATE products SET deleted_at = NOW() WHERE id = ?', [id]);
 
-    // Delete image files
-    for (const img of images) {
-      if (img.image_url) {
-        try {
-          const imagePath = path.join(__dirname, '../..', img.image_url);
-          // SECURITY: Validate path before deletion
-          const safePath = validatePath(imagePath);
-          if (fs.existsSync(safePath)) {
-            fs.unlinkSync(safePath);
-          }
-        } catch (e) {
-          console.warn('File deletion skipped:', e.message);
-        }
-      }
-      if (img.processed_image_url) {
-        try {
-          const processedPath = path.join(__dirname, '../..', img.processed_image_url);
-          // SECURITY: Validate path before deletion
-          const safePath = validatePath(processedPath);
-          if (fs.existsSync(safePath)) {
-            fs.unlinkSync(safePath);
-          }
-        } catch (e) {
-          console.warn('File deletion skipped:', e.message);
-        }
-      }
-    }
-
-    // Delete product images from database
-    await db.execute('DELETE FROM product_images WHERE product_id = ?', [id]);
-
-    // Delete product
-    await db.execute('DELETE FROM products WHERE id = ?', [id]);
+    // Note: We do not delete image files or records here for soft delete.
+    // Cleanup/Archiving script should handle old soft-deleted records.
 
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
