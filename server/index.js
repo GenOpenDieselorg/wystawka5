@@ -32,74 +32,6 @@ app.use(timeoutMiddleware);
 // Add Request ID and Context
 app.use(requestIdMiddleware);
 
-// Generate Nonce for CSP
-app.use((req, res, next) => {
-  res.locals.nonce = crypto.randomBytes(16).toString('base64');
-  next();
-});
-
-// Force HTTPS - Redirect HTTP to HTTPS
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV === 'production' && !req.secure && req.get('x-forwarded-proto') !== 'https') {
-    return res.redirect('https://' + req.get('host') + req.url);
-  }
-  next();
-});
-
-// Security Middleware - Helmet
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        (req, res) => `'nonce-${res.locals.nonce}'`,
-        "https://challenges.cloudflare.com",
-        "https://accounts.google.com",
-        "https://apis.google.com"
-      ],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https://*.googleusercontent.com", "https://*.wystawoferte.pl"],
-      connectSrc: ["'self'", "https://challenges.cloudflare.com", "https://accounts.google.com"],
-      frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://accounts.google.com"],
-      objectSrc: ["'none'"],
-      upgradeInsecureRequests: [],
-    },
-  },
-}));
-
-app.use(cookieParser());
-
-// CSRF Protection
-app.use(csrfProtection);
-
-// Additional Security Headers
-app.use((req, res, next) => {
-  // Permissions Policy
-  res.setHeader(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()'
-  );
-  next();
-});
-
-// Rate Limiting
-// Use Cloudflare headers for IP identification when behind Cloudflare proxy
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 100 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: 'Too many requests from this IP, please try again after 15 minutes',
-  validate: {
-    ip: false
-  }
-});
-app.use('/api/', limiter);
-
 // Middleware - CORS configuration
 const corsOptions = {
   origin: (origin, callback) => {
@@ -151,6 +83,75 @@ app.use(cors(corsOptions));
 
 // Handle preflight requests
 app.options('*', cors(corsOptions));
+
+// Generate Nonce for CSP
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
+
+// Force HTTPS - Redirect HTTP to HTTPS
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && !req.secure && req.get('x-forwarded-proto') !== 'https') {
+    return res.redirect('https://' + req.get('host') + req.url);
+  }
+  next();
+});
+
+// Security Middleware - Helmet
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        (req, res) => `'nonce-${res.locals.nonce}'`,
+        "https://challenges.cloudflare.com",
+        "https://accounts.google.com",
+        "https://apis.google.com"
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://*.googleusercontent.com", "https://*.wystawoferte.pl"],
+      connectSrc: ["'self'", "https://challenges.cloudflare.com", "https://accounts.google.com"],
+      frameSrc: ["'self'", "https://challenges.cloudflare.com", "https://accounts.google.com"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+}));
+
+app.use(cookieParser());
+
+// CSRF Protection
+app.use(csrfProtection);
+
+// Additional Security Headers
+app.use((req, res, next) => {
+  // Permissions Policy
+  res.setHeader(
+    'Permissions-Policy',
+    'camera=(), microphone=(), geolocation=(), payment=(), usb=(), vr=()'
+  );
+  next();
+});
+
+// Rate Limiting
+// Use Cloudflare headers for IP identification when behind Cloudflare proxy
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests from this IP, please try again after 15 minutes',
+  validate: {
+    ip: false
+  }
+});
+app.use('/api/', limiter);
 
 // Body parsing - allow raw for logs endpoint (sendBeacon), then JSON for others
 app.use('/api/logs', express.raw({ type: ['application/json', 'text/plain'] }));
