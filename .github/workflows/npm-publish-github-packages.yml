@@ -1,0 +1,48 @@
+name: Wystawka CI
+
+# Określamy, kiedy potok ma się uruchamiać
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    
+    # Testujemy na stabilnej wersji Node.js (LTS)
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+    - name: Pobranie kodu repozytorium
+      uses: actions/checkout@v4
+
+    - name: Konfiguracja środowiska Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm' # Automatyczne cachowanie paczek dla szybszych buildów
+
+    - name: Instalacja zależności (Backend i Frontend)
+      # Wykorzystujemy Twój gotowy skrypt z package.json
+      run: npm run install-all
+
+    - name: Budowanie aplikacji frontendowej (React)
+      run: |
+        cd client
+        npm run build
+      env:
+        CI: false # Zapobiega przerywaniu buildu przez drobne ostrzeżenia (warnings) lintera w React
+
+    # -- MIEJSCE NA PRZYSZŁE TESTY --
+    # - name: Uruchomienie lintera (sprawdzanie składni)
+    #   run: npm run lint
+    #
+    # - name: Uruchomienie testów backendu
+    #   run: npm run test:server
+    #
+    # - name: Uruchomienie testów frontendu
+    #   run: cd client && npm run test
