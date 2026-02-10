@@ -158,6 +158,79 @@ function createSafeLookup() {
  * @param {number} maxRedirects - Maximum number of redirects to follow (default: 5)
  * @returns {Promise<object>} - Axios response
  */
+/**
+ * SECURITY: Blocklist of hostnames commonly used in SSRF attacks
+ * (cloud metadata endpoints, internal services, etc.)
+ */
+const BLOCKED_HOSTNAMES = [
+  'metadata.google.internal',
+  'metadata.goog',
+  'metadata',
+  'kubernetes.default',
+  'kubernetes.default.svc',
+];
+
+/**
+ * SECURITY: Validates and sanitizes a URL, returning safe components.
+ * Rejects dangerous URLs (private IPs, metadata endpoints, non-standard ports, etc.)
+ * 
+ * @param {string} urlString - The URL to validate
+ * @returns {Promise<{protocol: string, hostname: string, port: string, pathname: string, search: string}>}
+ * @throws {Error} if the URL is unsafe
+ */
+async function validateAndSanitizeUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch (e) {
+    throw new Error(`SSRF Prevention: Invalid URL`);
+  }
+
+  // SECURITY: Only allow http/https protocols
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(`SSRF Prevention: Invalid protocol: ${parsed.protocol}`);
+  }
+
+  // SECURITY: Block credentials in URL (prevents authentication-based SSRF bypass)
+  if (parsed.username || parsed.password) {
+    throw new Error('SSRF Prevention: Credentials in URL are not allowed');
+  }
+
+  // SECURITY: Block non-standard ports (only allow 80, 443, or default)
+  if (parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+    throw new Error(`SSRF Prevention: Non-standard port not allowed: ${parsed.port}`);
+  }
+
+  // SECURITY: Block known dangerous hostnames (cloud metadata, internal services)
+  const lowerHostname = parsed.hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.includes(lowerHostname)) {
+    throw new Error(`SSRF Prevention: Blocked hostname: ${parsed.hostname}`);
+  }
+
+  // SECURITY: Block IP addresses used directly in URL to prevent DNS bypass
+  // 169.254.169.254 is the most common cloud metadata endpoint
+  if (lowerHostname === '169.254.169.254' || lowerHostname === '[fd00::169:254:169:254]') {
+    throw new Error('SSRF Prevention: Direct IP access to metadata endpoint blocked');
+  }
+
+  // SECURITY: DNS validation - resolve hostname and check for private IPs
+  const dnsValidation = await validateUrl(urlString);
+  if (!dnsValidation.safe) {
+    throw new Error(`SSRF Prevention: ${dnsValidation.error}`);
+  }
+
+  // Return validated, reconstructed URL components
+  return {
+    protocol: parsed.protocol,
+    hostname: parsed.hostname,
+    port: parsed.port,
+    pathname: parsed.pathname,
+    search: parsed.search,
+    // Reconstruct a clean URL from validated components only
+    href: `${parsed.protocol}//${parsed.hostname}${parsed.port ? ':' + parsed.port : ''}${parsed.pathname}${parsed.search}`
+  };
+}
+
 async function safeAxiosRequest(config, maxRedirects = 5) {
   let currentUrl = config.url;
   let redirectCount = 0;
@@ -168,28 +241,9 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
   const httpsAgent = new https.Agent({ lookup: safeLookup });
 
   while (redirectCount <= maxRedirects) {
-    // Validate URL protocol
-    let parsedUrl;
-    try {
-      parsedUrl = new URL(currentUrl);
-    } catch (e) {
-      throw new Error(`SSRF Prevention: Invalid URL: ${currentUrl}`);
-    }
-
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      throw new Error(`SSRF Prevention: Invalid protocol: ${parsedUrl.protocol}`);
-    }
-
-    // SECURITY: Pre-request DNS validation (defense-in-depth alongside connection-time safeLookup)
-    // This explicitly validates the resolved IP before initiating the request,
-    // preventing SSRF even if the HTTP agent lookup is somehow bypassed.
-    const preValidation = await validateUrl(currentUrl);
-    if (!preValidation.safe) {
-      throw new Error(`SSRF Prevention: ${preValidation.error}`);
-    }
-
-    // Normalized URL to ensure consistency
-    const validatedUrlString = new URL(currentUrl).toString();
+    // SECURITY: Validate URL and extract safe components
+    // This performs protocol, port, hostname, credentials, and DNS validation
+    const validatedUrl = await validateAndSanitizeUrl(currentUrl);
 
     // Prepare config for this request - agents enforce IP validation at connection time
     // SECURITY: Explicitly reconstruct config to prevent property pollution (e.g. proxy, socketPath)
@@ -197,7 +251,8 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
     
     const requestConfig = {
       method,
-      url: validatedUrlString,
+      // SECURITY: Use reconstructed URL from validated components, not the raw user input
+      url: validatedUrl.href,
       headers,
       data,
       timeout,
@@ -227,8 +282,8 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
         response.data.destroy();
       }
 
-      // Resolve relative URLs
-      currentUrl = new URL(location, currentUrl).toString();
+      // Resolve relative URLs against current (validated) URL
+      currentUrl = new URL(location, validatedUrl.href).toString();
       continue;
     }
 
