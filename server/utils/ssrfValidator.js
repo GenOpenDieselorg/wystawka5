@@ -189,13 +189,27 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
     }
 
     // Prepare config for this request - agents enforce IP validation at connection time
+    // SECURITY: Explicitly reconstruct config to prevent property pollution (e.g. proxy, socketPath)
+    const { method, headers, data, timeout, params, responseType, auth, signal } = config;
+    
     const requestConfig = {
-      ...config,
+      method,
       url: currentUrl,
+      headers,
+      data,
+      timeout,
+      params,
+      responseType,
+      auth,
+      signal,
       maxRedirects: 0, // Disable auto redirects
       validateStatus: status => status >= 200 && status < 400, // Accept 3xx to handle manually
       httpAgent,
-      httpsAgent
+      httpsAgent,
+      // SECURITY: Explicitly disable proxy to prevent bypassing the custom agent
+      proxy: false,
+      // SECURITY: Ensure no custom adapter is used
+      adapter: undefined
     };
 
     const response = await axios(requestConfig);

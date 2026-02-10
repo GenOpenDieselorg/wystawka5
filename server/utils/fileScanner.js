@@ -52,12 +52,13 @@ const SUSPICIOUS_PATTERNS = [
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 /**
- * Read magic bytes from file
- * @param {string} filePath - Path to file
- * @param {number} length - Number of bytes to read (default: 16)
- * @returns {Buffer} - Magic bytes buffer
+ * SECURITY: Validate and resolve file path to prevent directory traversal
+ * ensures file is within project root or temp directory
+ * @param {string} filePath - Raw file path
+ * @returns {string} - Resolved absolute path
+ * @throws {Error} - If path is invalid or access denied
  */
-function readMagicBytes(filePath, length = 16) {
+function validatePath(filePath) {
   // SECURITY: Validate path to prevent directory traversal
   // This ensures that even if called directly, we don't access unauthorized files
   if (filePath.indexOf('\0') !== -1) {
@@ -72,9 +73,22 @@ function readMagicBytes(filePath, length = 16) {
   // e.g., /app-evil/file would match startsWith('/app') but not startsWith('/app/')
   const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
   const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+  
   if (!isInProjectRoot && !isInTempDir) {
       throw new Error('Access denied: File path outside allowed directories');
   }
+
+  return resolvedPath;
+}
+
+/**
+ * Read magic bytes from file
+ * @param {string} filePath - Path to file
+ * @param {number} length - Number of bytes to read (default: 16)
+ * @returns {Buffer} - Magic bytes buffer
+ */
+function readMagicBytes(filePath, length = 16) {
+  const resolvedPath = validatePath(filePath);
 
   // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
   const fd = fs.openSync(resolvedPath, 'r');
@@ -158,23 +172,11 @@ async function scanFile(filePath, mimeType, options = {}) {
 
   try {
     // SECURITY: Validate path to prevent directory traversal
-    if (filePath.indexOf('\0') !== -1) {
-       return { valid: false, errors: ['Invalid file path'] };
-    }
-
-    // Resolve path and check if it is within allowed directories
-    const resolvedPath = path.resolve(filePath);
-    const projectRoot = path.resolve(process.cwd());
-    const tempDir = path.resolve(os.tmpdir());
-    
-    // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
-    // e.g., /app-evil/file would match startsWith('/app') but not startsWith('/app/')
-    // Note: On Windows, paths are case-insensitive, but path.resolve normalizes them.
-    const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
-    const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
-    
-    if (!isInProjectRoot && !isInTempDir) {
-        return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
+    let resolvedPath;
+    try {
+      resolvedPath = validatePath(filePath);
+    } catch (e) {
+      return { valid: false, errors: [e.message] };
     }
 
     // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
@@ -194,6 +196,7 @@ async function scanFile(filePath, mimeType, options = {}) {
     }
 
     // Validate file signature (magic bytes)
+    // Note: readMagicBytes also validates path internally, but we use resolvedPath here which is safe
     if (!validateFileSignature(resolvedPath, mimeType)) {
       errors.push(`File signature does not match expected MIME type: ${mimeType}`);
     }
@@ -234,15 +237,11 @@ async function quickScan(filePath, mimeType) {
 
   try {
     // SECURITY: Validate path
-    const resolvedPath = path.resolve(filePath);
-    const projectRoot = path.resolve(process.cwd());
-    const tempDir = path.resolve(os.tmpdir());
-    
-    // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
-    const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
-    const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
-    if (!isInProjectRoot && !isInTempDir) {
-       return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
+    let resolvedPath;
+    try {
+      resolvedPath = validatePath(filePath);
+    } catch (e) {
+      return { valid: false, errors: [e.message] };
     }
 
     // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
