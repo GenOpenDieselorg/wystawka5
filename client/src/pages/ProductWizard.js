@@ -2456,7 +2456,11 @@ function ProductWizard() {
                 </Box>
             ))}
             {/* New Images */}
-            {images.map((img, index) => (
+            {images.map((img, index) => {
+              const previewUrl = imagePreviewUrls[index];
+              const safeUrl = (previewUrl && typeof previewUrl === 'string' && previewUrl.startsWith('blob:')) ? previewUrl : '';
+
+              return (
                 <Box 
                   key={`new-${index}`} 
                   sx={{ 
@@ -2472,7 +2476,7 @@ function ProductWizard() {
                   }}
                 >
                 <img
-                    src={(imagePreviewUrls[index] && typeof imagePreviewUrls[index] === 'string' && imagePreviewUrls[index].startsWith('blob:')) ? imagePreviewUrls[index] : ''}
+                    src={safeUrl}
                     alt={`Preview ${index + 1}`}
                     style={{ width: '150px', height: '150px', objectFit: 'cover', display: 'block' }}
                 />
@@ -2500,7 +2504,8 @@ function ProductWizard() {
                     ×
                 </Button>
                 </Box>
-            ))}
+            );
+          })}
             </Box>
              <Button
                 variant="outlined"
