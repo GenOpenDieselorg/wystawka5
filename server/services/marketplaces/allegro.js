@@ -15,6 +15,32 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   }
 
   /**
+   * Validate Allegro offer ID to prevent malformed or unsafe values
+   * being used in API request URLs.
+   *
+   * Allegro offer IDs are typically UUID-like strings. To be safe and
+   * compatible, we accept only non-empty strings composed of letters,
+   * digits, hyphens and underscores, with a reasonable maximum length.
+   */
+  _validateOfferId(offerId) {
+    if (typeof offerId !== 'string') {
+      throw new Error('Invalid offerId: must be a string');
+    }
+
+    const trimmedId = offerId.trim();
+
+    // Allow only alphanumeric characters, hyphens and underscores, 1-64 chars.
+    const OFFER_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
+
+    if (!OFFER_ID_REGEX.test(trimmedId)) {
+      throw new Error('Invalid offerId format');
+    }
+
+    return trimmedId;
+  }
+
+  /**
+   * Initializes the adapter with authentication data
    * Validate Allegro offer ID to prevent using unexpected values in request URLs.
    * Allows only alphanumeric characters and dashes, with a bounded length.
    * Throws an error if the ID is invalid.
