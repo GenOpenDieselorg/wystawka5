@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
-const { validatePath } = require('./pathValidator'); // SECURITY: Path validation
 
 /**
  * SECURITY: File scanner to detect malware and suspicious files
@@ -12,6 +12,7 @@ const { validatePath } = require('./pathValidator'); // SECURITY: Path validatio
  * 2. File size limits
  * 3. Suspicious content detection
  * 4. Extension validation
+ * 5. Path traversal prevention
  */
 
 // SECURITY: Allowed file signatures (magic bytes) for images
@@ -57,6 +58,21 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
  * @returns {Buffer} - Magic bytes buffer
  */
 function readMagicBytes(filePath, length = 16) {
+  // SECURITY: Validate path to prevent directory traversal
+  // This ensures that even if called directly, we don't access unauthorized files
+  if (filePath.indexOf('\0') !== -1) {
+    throw new Error('Invalid file path');
+  }
+
+  const resolvedPath = path.resolve(filePath);
+  const projectRoot = path.resolve(process.cwd());
+  const tempDir = path.resolve(os.tmpdir());
+  
+  // Allow paths in project root or system temp
+  if (!resolvedPath.startsWith(projectRoot) && !resolvedPath.startsWith(tempDir)) {
+      throw new Error('Access denied: File path outside allowed directories');
+  }
+
   const fd = fs.openSync(filePath, 'r');
   try {
     const buffer = Buffer.alloc(length);
@@ -138,12 +154,27 @@ async function scanFile(filePath, mimeType, options = {}) {
 
   try {
     // SECURITY: Validate path to prevent directory traversal
-    // We assume files to be scanned are within the project directory or system temp (if absolute)
-    // For now, we just ensure it doesn't contain traversal chars or is valid
-    // Ideally, we should enforce a base directory, but scanFile is generic.
-    // We'll check for null bytes which are dangerous in paths.
     if (filePath.indexOf('\0') !== -1) {
        return { valid: false, errors: ['Invalid file path'] };
+    }
+
+    // Resolve path and check if it is within allowed directories
+    const resolvedPath = path.resolve(filePath);
+    const projectRoot = path.resolve(process.cwd());
+    const tempDir = path.resolve(os.tmpdir());
+    
+    // Check if path starts with allowed roots
+    // Note: On Windows, paths are case-insensitive, but startWith is case-sensitive.
+    // Ideally we should handle case sensitivity, but normalization helps.
+    // For now, simple check.
+    const isAllowed = resolvedPath.startsWith(projectRoot) || resolvedPath.startsWith(tempDir);
+    
+    if (!isAllowed) {
+        // Special case: Docker or other environments where /tmp might be different
+        // If it's an absolute path and exists, and we are sure it's not sensitive...
+        // But for safety, we strictly enforce project root or system temp.
+        // If multer saves somewhere else, this needs config.
+        return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
     }
 
     // Check if file exists
@@ -201,6 +232,15 @@ async function quickScan(filePath, mimeType) {
   const errors = [];
 
   try {
+    // SECURITY: Validate path
+    const resolvedPath = path.resolve(filePath);
+    const projectRoot = path.resolve(process.cwd());
+    const tempDir = path.resolve(os.tmpdir());
+    
+    if (!resolvedPath.startsWith(projectRoot) && !resolvedPath.startsWith(tempDir)) {
+       return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
+    }
+
     if (!fs.existsSync(filePath)) {
       return { valid: false, errors: ['File does not exist'] };
     }
@@ -236,4 +276,3 @@ module.exports = {
   containsSuspiciousContent,
   MAX_FILE_SIZE
 };
-

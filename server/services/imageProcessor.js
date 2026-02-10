@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const axios = require('axios');
 const sharp = require('sharp');
 const crypto = require('crypto');
-const { validateUrl } = require('../utils/ssrfValidator');
+const { validateUrl, safeAxiosRequest } = require('../utils/ssrfValidator');
 const { validatePath } = require('../utils/pathValidator');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -27,7 +28,7 @@ async function downloadImage(url, tempDir) {
   const tempFilename = `downloaded-${uuid}.png`;
   const tempPath = path.join(tempDir, tempFilename);
 
-  const response = await axios({
+  const response = await safeAxiosRequest({
     url,
     method: 'GET',
     responseType: 'stream',
@@ -138,6 +139,15 @@ async function processImage(options) {
             if (bgImage.isTemp) tempFiles.push(bgImage.path);
          } else {
             throw new Error('Background image required for replace_bg');
+         }
+
+         // SECURITY: Verify path is safe before reading
+         const resolvedBgPath = path.resolve(bgImage.path);
+         const projectRoot = path.resolve(process.cwd());
+         const tempDir = path.resolve(os.tmpdir());
+
+         if (!resolvedBgPath.startsWith(projectRoot) && !resolvedBgPath.startsWith(tempDir)) {
+             throw new Error('Security Error: Background image path traversal attempt');
          }
 
          const bgBuffer = fs.readFileSync(bgImage.path);

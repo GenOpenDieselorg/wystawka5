@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const walletService = require('../services/walletService');
 const notificationService = require('../services/notificationService');
+const { safeAxiosRequest } = require('../utils/ssrfValidator');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wystawoferte.pl';
 
@@ -349,14 +350,13 @@ router.post('/tpay/notification', async (req, res) => {
     const token = await getTpayToken();
 
     // Verify transaction status with Tpay API
-    const response = await axios.get(
-      `${TPAY_API_URL}/transactions/${verifyId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+    const response = await safeAxiosRequest({
+      url: `${TPAY_API_URL}/transactions/${verifyId}`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
       }
-    );
+    });
 
     const tpayTransaction = response.data;
     console.log('Tpay verification response:', { id: tpayTransaction.transactionId, status: tpayTransaction.status });

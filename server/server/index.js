@@ -35,6 +35,17 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Apply rate limiting to critical non-API routes too (Landing Page, etc.)
+// to prevent DoS attacks on server rendering
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 2000, // Higher limit for static assets/page loads
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests, please try again later'
+});
+app.use('/', globalLimiter);
+
 // Middleware - CORS configuration
 const corsOptions = {
   origin: (origin, callback) => {

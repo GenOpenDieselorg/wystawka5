@@ -1,5 +1,6 @@
 const dns = require('dns');
 const { URL } = require('url');
+const axios = require('axios');
 
 /**
  * Validates if a URL is safe to request (SSRF protection).
@@ -117,4 +118,54 @@ function isPrivateIp(ip) {
   return false;
 }
 
-module.exports = { validateUrl, isPrivateIp };
+/**
+ * Performs a safe HTTP request using axios, preventing SSRF by validating
+ * the URL and all redirects against private IP ranges.
+ * 
+ * @param {object} config - Axios config object
+ * @param {number} maxRedirects - Maximum number of redirects to follow (default: 5)
+ * @returns {Promise<object>} - Axios response
+ */
+async function safeAxiosRequest(config, maxRedirects = 5) {
+  let currentUrl = config.url;
+  let redirectCount = 0;
+
+  while (redirectCount <= maxRedirects) {
+    // Validate current URL
+    const validation = await validateUrl(currentUrl);
+    if (!validation.safe) {
+      throw new Error(`SSRF Prevention: URL blocked: ${currentUrl} (${validation.error})`);
+    }
+
+    // Prepare config for this request
+    const requestConfig = {
+      ...config,
+      url: currentUrl,
+      maxRedirects: 0, // Disable auto redirects
+      validateStatus: status => status >= 200 && status < 400 // Accept 3xx to handle manually
+    };
+
+    const response = await axios(requestConfig);
+
+    // Handle redirects
+    if (response.status >= 300 && response.status < 400 && response.headers.location) {
+      redirectCount++;
+      const location = response.headers.location;
+      
+      // Destroy stream if applicable to prevent leaks
+      if (response.data && typeof response.data.destroy === 'function') {
+        response.data.destroy();
+      }
+
+      // Resolve relative URLs
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    return response;
+  }
+
+  throw new Error(`Too many redirects (max ${maxRedirects})`);
+}
+
+module.exports = { validateUrl, isPrivateIp, safeAxiosRequest };

@@ -7,6 +7,7 @@ const logActivity = require('../utils/activityLogger');
 const db = require('../config/database');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const multer = require('multer');
 const sharp = require('sharp');
 const FormData = require('form-data');
@@ -31,7 +32,8 @@ const { scanFile } = require('../utils/fileScanner'); // SECURITY: File scanning
 // Generate product description from images using Vision AI
 router.post('/generate-description-from-images', authenticate, upload.array('images', 10), async (req, res) => {
   try {
-    const { productName, dimensions, price, productId, customInstructions } = req.body;
+    const { productName: rawProductName, dimensions, price, productId, customInstructions } = req.body;
+    const productName = rawProductName ? String(rawProductName) : '';
     // Validate templateId
     let templateId = req.body.templateId;
     if (templateId !== undefined && templateId !== null) {
@@ -420,9 +422,17 @@ router.post('/edit-image', authenticate, upload.single('backgroundImage'), async
       const scanResult = await scanFile(backgroundImageFile.path, mimeType);
       if (!scanResult.valid) {
         // Clean up malicious file
-        if (fs.existsSync(backgroundImageFile.path)) {
-          fs.unlinkSync(backgroundImageFile.path);
+        const resolvedPath = path.resolve(backgroundImageFile.path);
+        const projectRoot = path.resolve(process.cwd());
+        const tempDir = path.resolve(os.tmpdir());
+
+        // Only unlink if path is safe (within project or temp)
+        if (resolvedPath.startsWith(projectRoot) || resolvedPath.startsWith(tempDir)) {
+             if (fs.existsSync(backgroundImageFile.path)) {
+                fs.unlinkSync(backgroundImageFile.path);
+             }
         }
+        
         return res.status(400).json({ 
           error: `Plik nie przeszedł skanowania bezpieczeństwa: ${scanResult.errors.join(', ')}` 
         });

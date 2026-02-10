@@ -19,7 +19,7 @@ const { scanFile } = require('../utils/fileScanner'); // SECURITY: File scanning
 
 // SECURITY: Whitelist of allowed domains for remote image URLs (prevents SSRF)
 const { validatePath } = require('../utils/pathValidator'); // Import path validator
-const { validateUrl } = require('../utils/ssrfValidator');
+const { validateUrl, safeAxiosRequest } = require('../utils/ssrfValidator');
 
 const ALLOWED_IMAGE_DOMAINS = [
   'allegro.pl',
@@ -608,7 +608,7 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
             return;
           }
 
-          const response = await axios({
+          const response = await safeAxiosRequest({
             url,
             method: 'GET',
             responseType: 'stream',
