@@ -491,9 +491,9 @@ function AllegroBulkEdit() {
       return html
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'");
+        // Removed &amp; replacement to prevent double-escaping attacks
     }
     return html;
   };
