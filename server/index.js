@@ -154,6 +154,18 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Global rate limiter for non-API routes (static files, React app, etc.)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 2000, // Higher limit for static assets/page loads
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests, please try again later',
+  validate: {
+    ip: false
+  }
+});
+
 // Body parsing - allow raw for logs endpoint (sendBeacon), then JSON for others
 app.use('/api/logs', express.raw({ type: ['application/json', 'text/plain'] }));
 app.use(express.json({ 
@@ -292,7 +304,7 @@ if (staticFilesExist) {
   app.use(express.static(buildPath));
   
   // Handle React Router - serve index.html for all other non-API routes
-  app.get('*', (req, res, next) => {
+  app.get('*', globalLimiter, (req, res, next) => {
     // Skip API routes and landing page routes (already handled above)
     if (req.path.startsWith('/api/') || req.path === '/' || req.path === '/cennik' || req.path === '') {
       return next();

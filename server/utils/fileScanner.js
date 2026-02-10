@@ -73,7 +73,8 @@ function readMagicBytes(filePath, length = 16) {
       throw new Error('Access denied: File path outside allowed directories');
   }
 
-  const fd = fs.openSync(filePath, 'r');
+  // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
+  const fd = fs.openSync(resolvedPath, 'r');
   try {
     const buffer = Buffer.alloc(length);
     fs.readSync(fd, buffer, 0, length, 0);
@@ -177,13 +178,14 @@ async function scanFile(filePath, mimeType, options = {}) {
         return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
     }
 
+    // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
     // Check if file exists
-    if (!fs.existsSync(filePath)) {
+    if (!fs.existsSync(resolvedPath)) {
       return { valid: false, errors: ['File does not exist'] };
     }
 
     // Check file size
-    const stats = fs.statSync(filePath);
+    const stats = fs.statSync(resolvedPath);
     if (stats.size > maxSize) {
       errors.push(`File size (${stats.size} bytes) exceeds maximum allowed size (${maxSize} bytes)`);
     }
@@ -193,17 +195,17 @@ async function scanFile(filePath, mimeType, options = {}) {
     }
 
     // Validate file signature (magic bytes)
-    if (!validateFileSignature(filePath, mimeType)) {
+    if (!validateFileSignature(resolvedPath, mimeType)) {
       errors.push(`File signature does not match expected MIME type: ${mimeType}`);
     }
 
     // Validate extension matches MIME type
-    if (!validateExtension(filePath, mimeType)) {
+    if (!validateExtension(resolvedPath, mimeType)) {
       errors.push(`File extension does not match MIME type: ${mimeType}`);
     }
 
     // Check for suspicious content
-    if (containsSuspiciousContent(filePath)) {
+    if (containsSuspiciousContent(resolvedPath)) {
       errors.push('File contains suspicious content patterns (potential malware)');
     }
 
@@ -241,18 +243,19 @@ async function quickScan(filePath, mimeType) {
        return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
     }
 
-    if (!fs.existsSync(filePath)) {
+    // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
+    if (!fs.existsSync(resolvedPath)) {
       return { valid: false, errors: ['File does not exist'] };
     }
 
     // Check file size
-    const stats = fs.statSync(filePath);
+    const stats = fs.statSync(resolvedPath);
     if (stats.size > MAX_FILE_SIZE) {
       errors.push(`File size exceeds maximum allowed size`);
     }
 
     // Validate file signature
-    if (!validateFileSignature(filePath, mimeType)) {
+    if (!validateFileSignature(resolvedPath, mimeType)) {
       errors.push(`File signature does not match expected type`);
     }
 

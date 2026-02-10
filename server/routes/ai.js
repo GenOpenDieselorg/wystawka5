@@ -49,7 +49,7 @@ router.post('/generate-description-from-images', authenticate, upload.array('ima
     }
     
     const userId = req.userId;
-    let imageFiles = req.files || [];
+    let imageFiles = Array.isArray(req.files) ? req.files : [];
     let existingImageFiles = []; // Track existing images separately for cleanup
 
     // If no uploaded files but productId provided, read images from product
@@ -236,7 +236,7 @@ router.post('/generate-description-from-images', authenticate, upload.array('ima
     await logActivity(req, userId, 'ai_description_generated_from_images', { 
       productName: productName || 'Unknown',
       templateId,
-      imageCount: imageFiles.length
+      imageCount: Number.isFinite(imageFiles.length) ? imageFiles.length : 0
     });
 
     res.json({
@@ -426,10 +426,10 @@ router.post('/edit-image', authenticate, upload.single('backgroundImage'), async
         const projectRoot = path.resolve(process.cwd());
         const tempDir = path.resolve(os.tmpdir());
 
-        // Only unlink if path is safe (within project or temp)
-        if (resolvedPath.startsWith(projectRoot) || resolvedPath.startsWith(tempDir)) {
-             if (fs.existsSync(backgroundImageFile.path)) {
-                fs.unlinkSync(backgroundImageFile.path);
+        // Only unlink if path is safe (within project or temp) - use resolvedPath to prevent path traversal
+        if (resolvedPath.startsWith(projectRoot + path.sep) || resolvedPath.startsWith(tempDir + path.sep)) {
+             if (fs.existsSync(resolvedPath)) {
+                fs.unlinkSync(resolvedPath);
              }
         }
         

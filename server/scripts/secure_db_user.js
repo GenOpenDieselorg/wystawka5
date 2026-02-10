@@ -1,5 +1,7 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const crypto = require('crypto');
 
 const run = async () => {
@@ -38,11 +40,32 @@ const run = async () => {
     await connection.execute('FLUSH PRIVILEGES');
 
     console.log('User created and permissions granted successfully.');
-    console.log('--------------------------------------------------');
-    console.log('Update your .env file with the following credentials:');
-    console.log(`DB_USER=${secureUser}`);
-    console.log(`DB_PASSWORD=${securePassword}`);
-    console.log('--------------------------------------------------');
+
+    // Automatically update .env file with new credentials instead of logging them
+    const envPath = path.resolve(__dirname, '../../.env');
+    let envContent = '';
+    try {
+      envContent = fs.readFileSync(envPath, 'utf8');
+    } catch {
+      // .env file doesn't exist yet, will create one
+    }
+
+    // Replace or append DB_USER
+    if (envContent.match(/^DB_USER=.*/m)) {
+      envContent = envContent.replace(/^DB_USER=.*/m, `DB_USER=${secureUser}`);
+    } else {
+      envContent += `\nDB_USER=${secureUser}`;
+    }
+
+    // Replace or append DB_PASSWORD
+    if (envContent.match(/^DB_PASSWORD=.*/m)) {
+      envContent = envContent.replace(/^DB_PASSWORD=.*/m, `DB_PASSWORD=${securePassword}`);
+    } else {
+      envContent += `\nDB_PASSWORD=${securePassword}`;
+    }
+
+    fs.writeFileSync(envPath, envContent.trim() + '\n', { mode: 0o600 });
+    console.log('.env file has been updated with the new database credentials.');
 
     await connection.end();
   } catch (error) {

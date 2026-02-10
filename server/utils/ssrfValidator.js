@@ -1,4 +1,6 @@
 const dns = require('dns');
+const http = require('http');
+const https = require('https');
 const { URL } = require('url');
 const axios = require('axios');
 
@@ -119,8 +121,38 @@ function isPrivateIp(ip) {
 }
 
 /**
- * Performs a safe HTTP request using axios, preventing SSRF by validating
- * the URL and all redirects against private IP ranges.
+ * Creates a custom DNS lookup function that validates resolved IPs
+ * against private/reserved ranges at connection time (prevents TOCTOU/DNS rebinding).
+ */
+function createSafeLookup() {
+  return (hostname, options, callback) => {
+    dns.lookup(hostname, options, (err, address, family) => {
+      if (err) return callback(err);
+
+      // dns.lookup with { all: true } returns an array; without it returns a single address
+      if (Array.isArray(address)) {
+        for (const addr of address) {
+          if (isPrivateIp(addr.address)) {
+            return callback(new Error(`SSRF Prevention: Host resolves to private/restricted IP: ${addr.address}`));
+          }
+        }
+      } else {
+        if (isPrivateIp(address)) {
+          return callback(new Error(`SSRF Prevention: Host resolves to private/restricted IP: ${address}`));
+        }
+      }
+
+      callback(null, address, family);
+    });
+  };
+}
+
+/**
+ * Performs a safe HTTP request using axios, preventing SSRF by:
+ * - Validating the URL protocol
+ * - Using a custom DNS lookup that checks resolved IPs at connection time
+ *   (prevents TOCTOU / DNS rebinding attacks)
+ * - Manually following redirects with validation
  * 
  * @param {object} config - Axios config object
  * @param {number} maxRedirects - Maximum number of redirects to follow (default: 5)
@@ -130,19 +162,32 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
   let currentUrl = config.url;
   let redirectCount = 0;
 
+  // Create agents with safe DNS lookup that validates IPs at connection time
+  const safeLookup = createSafeLookup();
+  const httpAgent = new http.Agent({ lookup: safeLookup });
+  const httpsAgent = new https.Agent({ lookup: safeLookup });
+
   while (redirectCount <= maxRedirects) {
-    // Validate current URL
-    const validation = await validateUrl(currentUrl);
-    if (!validation.safe) {
-      throw new Error(`SSRF Prevention: URL blocked: ${currentUrl} (${validation.error})`);
+    // Validate URL protocol
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(currentUrl);
+    } catch (e) {
+      throw new Error(`SSRF Prevention: Invalid URL: ${currentUrl}`);
     }
 
-    // Prepare config for this request
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error(`SSRF Prevention: Invalid protocol: ${parsedUrl.protocol}`);
+    }
+
+    // Prepare config for this request - agents enforce IP validation at connection time
     const requestConfig = {
       ...config,
       url: currentUrl,
       maxRedirects: 0, // Disable auto redirects
-      validateStatus: status => status >= 200 && status < 400 // Accept 3xx to handle manually
+      validateStatus: status => status >= 200 && status < 400, // Accept 3xx to handle manually
+      httpAgent,
+      httpsAgent
     };
 
     const response = await axios(requestConfig);

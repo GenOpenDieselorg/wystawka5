@@ -150,7 +150,8 @@ async function processImage(options) {
              throw new Error('Security Error: Background image path traversal attempt');
          }
 
-         const bgBuffer = fs.readFileSync(bgImage.path);
+         // SECURITY: Use resolvedBgPath (validated) instead of raw bgImage.path to prevent path traversal
+         const bgBuffer = fs.readFileSync(resolvedBgPath);
          const base64Bg = bgBuffer.toString('base64');
 
          contents = [

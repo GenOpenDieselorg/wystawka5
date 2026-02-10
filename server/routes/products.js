@@ -1105,12 +1105,12 @@ router.post('/:id/images', authenticate, checkResourceOwnership('products'), upl
           }
 
           // SECURITY: Validate URL to prevent SSRF attacks
-          if (!isAllowedImageUrl(url)) {
+          if (!(await isAllowedImageUrl(url))) {
             console.warn(`Blocked remote image from untrusted domain: ${url}`);
             continue;
           }
 
-          const response = await axios({
+          const response = await safeAxiosRequest({
             url,
             method: 'GET',
             responseType: 'stream',

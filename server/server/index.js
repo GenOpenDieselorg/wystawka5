@@ -181,7 +181,7 @@ if (staticFilesExist) {
   app.use(express.static(buildPath));
   
   // Handle React Router - serve index.html for all other non-API routes
-  app.get('*', (req, res, next) => {
+  app.get('*', globalLimiter, (req, res, next) => {
     // Skip API routes and landing page routes (already handled above)
     if (req.path.startsWith('/api/') || req.path === '/' || req.path === '/cennik' || req.path === '') {
       return next();
