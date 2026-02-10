@@ -1,5 +1,8 @@
 name: Wystawka CI
 
+permissions:
+  contents: read
+
 # Określamy, kiedy potok ma się uruchamiać
 on:
   push:
