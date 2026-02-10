@@ -4,6 +4,7 @@ const axios = require('axios');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const { validateUrl } = require('../utils/ssrfValidator');
+const { validatePath } = require('../utils/pathValidator');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const { callGeminiWithRetry } = require('../utils/geminiRetry');
@@ -54,7 +55,10 @@ async function resolveImagePath(imageUrl) {
 
   if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('uploads/')) {
     const filePath = imageUrl.startsWith('/') ? imageUrl.substring(1) : imageUrl;
-    localPath = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+    
+    // SECURITY: Validate path to prevent directory traversal
+    // We allow files in 'uploads' directory
+    localPath = validatePath(filePath, 'uploads');
     
     if (!fs.existsSync(localPath)) {
       throw new Error(`Image file not found: ${localPath}`);

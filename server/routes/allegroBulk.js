@@ -10,6 +10,7 @@ const imageProcessor = require('../services/imageProcessor');
 const walletService = require('../services/walletService');
 const crypto = require('crypto');
 const { decrypt, encrypt } = require('../utils/encryption');
+const sanitizeHtml = require('sanitize-html');
 
 const allegroAdapter = new AllegroAdapter();
 
@@ -31,7 +32,7 @@ setInterval(() => {
 // Helper to chunk array
 const chunk = (arr, size) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
 
-// Helper: Sanitize HTML description for Allegro (copied from AllegroAdapter)
+// Helper: Sanitize HTML description for Allegro (using sanitize-html)
 const sanitizeDescriptionForAllegro = (html) => {
     if (!html) return '';
 
@@ -40,23 +41,15 @@ const sanitizeDescriptionForAllegro = (html) => {
     // 1. Remove AI placeholders
     content = content.replace(/\[ZDJĘCIE\]/gi, '');
 
-    // 2. Remove all attributes from tags (e.g. class, style, etc.)
-    // This removes everything after the tag name until the closing >
-    content = content.replace(/<([a-z0-9]+)\s+[^>]*>/gi, '<$1>');
-
-    // 3. Replace <br> with space (to avoid concatenation)
-    // Allegro API explicitly forbids <br> tags in description sections
+    // 2. Pre-processing: replace <br> with space
     content = content.replace(/<br\s*\/?>/gi, ' ');
 
-    // 4. Remove all tags EXCEPT allowed ones: h1, h2, p, ul, ol, li, b
-    const allowedTags = ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'];
-    
-    // Replace disallowed tags with empty string (keeping content)
-    content = content.replace(/<\/?([a-z0-9]+)[^>]*>/gi, (match, tagName) => {
-        if (allowedTags.includes(tagName.toLowerCase())) {
-            return match;
-        }
-        return ''; // Remove disallowed tag but keep content
+    // 3. Sanitize using sanitize-html
+    content = sanitizeHtml(content, {
+      allowedTags: ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'],
+      allowedAttributes: {}, // No attributes allowed
+      disallowedTagsMode: 'discard', // Remove disallowed tags but keep content
+      nonTextTags: ['script', 'textarea', 'style', 'iframe', 'head', 'link', 'object', 'embed']
     });
     
     return content;

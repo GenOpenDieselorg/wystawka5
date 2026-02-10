@@ -829,7 +829,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
 
   async deleteOffer(authData, externalId) {
     try {
-      this._validateOfferId(externalId);
+      const cleanOfferId = this._validateOfferId(externalId);
       let accessToken;
       
       // Extract access token from authData (can be integration object or token string)
@@ -845,7 +845,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
 
       // Delete offer using Allegro API
       // For product-offers, we use DELETE /sale/product-offers/{offerId}
-      await axios.delete(`https://api.allegro.pl/sale/product-offers/${externalId}`, {
+      await axios.delete(`https://api.allegro.pl/sale/product-offers/${cleanOfferId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json'
@@ -869,9 +869,10 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Helper: Get offer details
   async getOffer(authData, offerId) {
     try {
-      this._validateOfferId(offerId);
+      const cleanOfferId = this._validateOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
-      const response = await axios.get(`https://api.allegro.pl/sale/product-offers/${offerId}`, {
+      // SECURITY: Encode URI component just in case, though validation should prevent injection
+      const response = await axios.get(`https://api.allegro.pl/sale/product-offers/${encodeURIComponent(cleanOfferId)}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json'
@@ -887,9 +888,10 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Helper: Update offer (full PUT)
   async updateOffer(authData, offerId, payload) {
     try {
-      this._validateOfferId(offerId);
+      const cleanOfferId = this._validateOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
-      const response = await axios.patch(`https://api.allegro.pl/sale/product-offers/${offerId}`, payload, {
+      // SECURITY: Encode URI component
+      const response = await axios.patch(`https://api.allegro.pl/sale/product-offers/${encodeURIComponent(cleanOfferId)}`, payload, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json',
@@ -909,7 +911,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Note: For bulk, we might want to use UUIDs but keeping it simple for now
   async changePrice(authData, offerId, amount, currency = 'PLN') {
     try {
-      this._validateOfferId(offerId); // SECURITY: Validate offerId format
+      const cleanOfferId = this._validateOfferId(offerId); // SECURITY: Validate offerId format
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
       const commandId = require('crypto').randomUUID();
       
@@ -925,7 +927,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
           {
             type: 'CONTAINS_OFFERS',
             offers: [
-              { id: offerId }
+              { id: cleanOfferId }
             ]
           }
         ]

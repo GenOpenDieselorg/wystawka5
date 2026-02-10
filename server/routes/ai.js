@@ -34,8 +34,16 @@ router.post('/generate-description-from-images', authenticate, upload.array('ima
     const { productName, dimensions, price, productId, customInstructions } = req.body;
     // Validate templateId
     let templateId = req.body.templateId;
-    if (templateId && typeof templateId !== 'string' && typeof templateId !== 'number') {
-      templateId = null; 
+    if (templateId !== undefined && templateId !== null) {
+        if (typeof templateId !== 'string' && typeof templateId !== 'number') {
+             templateId = null;
+        } else {
+             // Ensure it's a safe string/number
+             templateId = String(templateId).replace(/[^a-zA-Z0-9-_]/g, '');
+             if (!templateId) templateId = null;
+        }
+    } else {
+        templateId = null;
     }
     
     const userId = req.userId;

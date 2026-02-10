@@ -717,6 +717,11 @@ router.delete('/allegro/offers/:offerId', authenticate, async (req, res) => {
     
     // First, check offer status - can only delete INACTIVE offers
     try {
+      // SECURITY: Validate offerId to prevent SSRF
+      if (!/^[a-zA-Z0-9-_]+$/.test(offerId)) {
+        return res.status(400).json({ error: 'Invalid offer ID format' });
+      }
+
       // Use /sale/product-offers endpoint to check status as /sale/offers/{id} is deprecated
       const offerResponse = await axios.get(`https://api.allegro.pl/sale/product-offers/${offerId}`, {
         headers: {
@@ -819,6 +824,12 @@ router.post('/allegro/offers/delete-batch', authenticate, async (req, res) => {
     
     for (const offerId of offerIds) {
       try {
+        // SECURITY: Validate offerId to prevent SSRF
+        if (!/^[a-zA-Z0-9-_]+$/.test(offerId)) {
+          results.push({ offerId, success: false, error: 'Invalid offer ID format' });
+          continue;
+        }
+
         // Check offer status first
         // Use /sale/product-offers endpoint to check status as /sale/offers/{id} is deprecated
         const offerResponse = await axios.get(`https://api.allegro.pl/sale/product-offers/${offerId}`, {
@@ -915,6 +926,11 @@ router.get('/olx/categories/:categoryId', authenticate, async (req, res) => {
   try {
     const { categoryId } = req.params;
     
+    // SECURITY: Validate categoryId
+    if (!/^[0-9]+$/.test(categoryId)) {
+      return res.status(400).json({ error: 'Invalid category ID format' });
+    }
+    
     // Get integration to use access token
     const [integrations] = await db.execute(
       'SELECT * FROM marketplace_integrations WHERE marketplace = ? AND user_id = ?',
@@ -950,6 +966,11 @@ router.get('/olx/categories/:categoryId', authenticate, async (req, res) => {
 router.get('/olx/categories/:categoryId/attributes', authenticate, async (req, res) => {
   try {
     const { categoryId } = req.params;
+    
+    // SECURITY: Validate categoryId
+    if (!/^[0-9]+$/.test(categoryId)) {
+      return res.status(400).json({ error: 'Invalid category ID format' });
+    }
     
     // Get integration to use access token
     const [integrations] = await db.execute(
@@ -1027,6 +1048,11 @@ router.get('/olx/cities', authenticate, async (req, res) => {
 router.get('/olx/cities/:cityId/districts', authenticate, async (req, res) => {
   try {
     const { cityId } = req.params;
+    
+    // SECURITY: Validate cityId
+    if (!/^[0-9]+$/.test(cityId)) {
+      return res.status(400).json({ error: 'Invalid city ID format' });
+    }
     
     // Get integration to use access token
     const [integrations] = await db.execute(

@@ -1054,7 +1054,7 @@ router.post('/:id/images', authenticate, checkResourceOwnership('products'), upl
         
         return { id: result.insertId, url: imageUrl };
       } catch (error) {
-        console.error(`Error processing image ${originalFilename}:`, error);
+        console.error('Error processing image:', originalFilename, error);
         if (inputPath.includes('temp-') && fs.existsSync(inputPath)) {
           fs.unlinkSync(inputPath);
         }

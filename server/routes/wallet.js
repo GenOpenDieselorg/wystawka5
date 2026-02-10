@@ -324,6 +324,12 @@ router.post('/tpay/notification', async (req, res) => {
 
     // Validate verifyId format (should not be a Merchant ID which is typically 5-6 digits)
     // Tpay transaction IDs are usually ULIDs (26 chars) or legacy TR-... strings
+    // SECURITY: Validate format to prevent SSRF
+    if (!/^[a-zA-Z0-9-_]+$/.test(String(verifyId))) {
+        console.error(`Invalid transaction ID format: ${verifyId}`);
+        return res.send('TRUE');
+    }
+
     if (/^\d{5,6}$/.test(String(verifyId))) {
         console.error(`Invalid transaction ID detected (looks like Merchant ID): ${verifyId}`);
         // If this invalid ID came from DB, clear it
