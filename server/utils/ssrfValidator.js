@@ -183,7 +183,9 @@ function createSafeLookup() {
  * @returns {Promise<object>} - Axios response
  */
 async function safeAxiosRequest(config, maxRedirects = 5) {
-  let currentUrl = config.url;
+  // Always work with a normalized URL string
+  const initialUrl = typeof config.url === 'string' ? config.url : String(config.url);
+  let currentUrl = initialUrl;
   let redirectCount = 0;
 
   // Create agents with safe DNS lookup that validates IPs at connection time
