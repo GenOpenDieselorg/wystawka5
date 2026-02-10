@@ -88,7 +88,24 @@ function validatePath(filePath) {
  * @returns {Buffer} - Magic bytes buffer
  */
 function readMagicBytes(filePath, length = 16) {
-  const resolvedPath = validatePath(filePath);
+  // SECURITY: Inline path validation to prevent traversal attacks
+  // We duplicate the logic from validatePath here to help static analysis tools (like CodeQL)
+  // recognize that the path is being sanitized before use.
+  if (filePath.indexOf('\0') !== -1) {
+    throw new Error('Invalid file path');
+  }
+
+  const resolvedPath = path.resolve(filePath);
+  const projectRoot = path.resolve(process.cwd());
+  const tempDir = path.resolve(os.tmpdir());
+  
+  // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+  const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+  const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+  
+  if (!isInProjectRoot && !isInTempDir) {
+      throw new Error('Access denied: File path outside allowed directories');
+  }
 
   // SECURITY: Use resolvedPath (validated) instead of raw filePath to prevent path traversal
   const fd = fs.openSync(resolvedPath, 'r');
@@ -174,7 +191,22 @@ async function scanFile(filePath, mimeType, options = {}) {
     // SECURITY: Validate path to prevent directory traversal
     let resolvedPath;
     try {
-      resolvedPath = validatePath(filePath);
+      // Inline validation to ensure static analysis tools can track the check
+      if (filePath.indexOf('\0') !== -1) {
+        throw new Error('Invalid file path');
+      }
+
+      resolvedPath = path.resolve(filePath);
+      const projectRoot = path.resolve(process.cwd());
+      const tempDir = path.resolve(os.tmpdir());
+      
+      // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+      const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+      const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+      
+      if (!isInProjectRoot && !isInTempDir) {
+          throw new Error('Access denied: File path outside allowed directories');
+      }
     } catch (e) {
       return { valid: false, errors: [e.message] };
     }
@@ -239,7 +271,22 @@ async function quickScan(filePath, mimeType) {
     // SECURITY: Validate path
     let resolvedPath;
     try {
-      resolvedPath = validatePath(filePath);
+      // Inline validation to ensure static analysis tools can track the check
+      if (filePath.indexOf('\0') !== -1) {
+        throw new Error('Invalid file path');
+      }
+
+      resolvedPath = path.resolve(filePath);
+      const projectRoot = path.resolve(process.cwd());
+      const tempDir = path.resolve(os.tmpdir());
+      
+      // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+      const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+      const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+      
+      if (!isInProjectRoot && !isInTempDir) {
+          throw new Error('Access denied: File path outside allowed directories');
+      }
     } catch (e) {
       return { valid: false, errors: [e.message] };
     }

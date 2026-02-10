@@ -563,23 +563,6 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
       }
     };
 
-    // Helper to normalize and validate remote image URLs before HTTP requests
-    const normalizeRemoteImageUrl = (rawUrl) => {
-      // Only normalize if it looks like an absolute HTTP(S) URL.
-      // Local paths and same-host URLs pointing into /uploads are handled separately
-      // and never passed to safeAxiosRequest.
-      let parsed;
-      try {
-        parsed = new URL(rawUrl);
-      } catch (e) {
-        throw new Error(`Invalid remote image URL: ${rawUrl}`);
-      }
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new Error(`Invalid remote image URL protocol: ${parsed.protocol}`);
-      }
-      return parsed.toString();
-    };
-
     // Handle remote images (URLs) and local generated images
     if (req.body.remoteImages) {
       const remoteImages = Array.isArray(req.body.remoteImages) ? req.body.remoteImages : [req.body.remoteImages];
@@ -625,11 +608,8 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
             return;
           }
 
-          // Normalize and validate the remote image URL before sending the request
-          const normalizedUrl = normalizeRemoteImageUrl(url);
-
           const response = await safeAxiosRequest({
-            url: normalizedUrl,
+            url,
             method: 'GET',
             responseType: 'stream',
             timeout: 30000,

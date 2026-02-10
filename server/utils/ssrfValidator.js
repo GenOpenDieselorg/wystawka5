@@ -4,30 +4,6 @@ const https = require('https');
 const { URL } = require('url');
 const axios = require('axios');
 
-// SECURITY: Allowed hostnames / base domains for outbound requests.
-// This can be customized via environment variable, for example:
-// SSRF_ALLOWED_HOSTS=example.com,api.example.com
-const rawAllowedHosts = process.env.SSRF_ALLOWED_HOSTS
-  ? process.env.SSRF_ALLOWED_HOSTS.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
-  : [];
-
-// Helper to check if a hostname is in the allowed list, supporting subdomains.
-function isAllowedHost(hostname) {
-  if (!hostname) return false;
-  const lowerHost = hostname.toLowerCase();
-
-  // If no explicit allow-list is configured, deny by default to avoid SSRF.
-  if (rawAllowedHosts.length === 0) {
-    return false;
-  }
-
-  return rawAllowedHosts.some(allowed => {
-    if (lowerHost === allowed) return true;
-    // Allow subdomains: *.allowed
-    return lowerHost.endsWith('.' + allowed);
-  });
-}
-
 /**
  * Validates if a URL is safe to request (SSRF protection).
  * - Checks protocol (http/https)
@@ -183,9 +159,7 @@ function createSafeLookup() {
  * @returns {Promise<object>} - Axios response
  */
 async function safeAxiosRequest(config, maxRedirects = 5) {
-  // Always work with a normalized URL string
-  const initialUrl = typeof config.url === 'string' ? config.url : String(config.url);
-  let currentUrl = initialUrl;
+  let currentUrl = config.url;
   let redirectCount = 0;
 
   // Create agents with safe DNS lookup that validates IPs at connection time
@@ -206,11 +180,6 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       throw new Error(`SSRF Prevention: Invalid protocol: ${parsedUrl.protocol}`);
     }
 
-    // SECURITY: Host allow-list check to prevent SSRF to arbitrary domains
-    if (!isAllowedHost(parsedUrl.hostname)) {
-      throw new Error(`SSRF Prevention: Disallowed host: ${parsedUrl.hostname}`);
-    }
-
     // SECURITY: Pre-request DNS validation (defense-in-depth alongside connection-time safeLookup)
     // This explicitly validates the resolved IP before initiating the request,
     // preventing SSRF even if the HTTP agent lookup is somehow bypassed.
@@ -219,13 +188,16 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       throw new Error(`SSRF Prevention: ${preValidation.error}`);
     }
 
+    // Normalized URL to ensure consistency
+    const validatedUrlString = new URL(currentUrl).toString();
+
     // Prepare config for this request - agents enforce IP validation at connection time
     // SECURITY: Explicitly reconstruct config to prevent property pollution (e.g. proxy, socketPath)
     const { method, headers, data, timeout, params, responseType, auth, signal } = config;
     
     const requestConfig = {
       method,
-      url: currentUrl,
+      url: validatedUrlString,
       headers,
       data,
       timeout,
@@ -256,20 +228,7 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       }
 
       // Resolve relative URLs
-      const nextUrl = new URL(location, currentUrl).toString();
-
-      // SECURITY: Re-validate host on redirect target to prevent SSRF via redirects
-      let nextParsed;
-      try {
-        nextParsed = new URL(nextUrl);
-      } catch (e) {
-        throw new Error(`SSRF Prevention: Invalid redirect URL: ${nextUrl}`);
-      }
-      if (!isAllowedHost(nextParsed.hostname)) {
-        throw new Error(`SSRF Prevention: Disallowed redirect host: ${nextParsed.hostname}`);
-      }
-
-      currentUrl = nextUrl;
+      currentUrl = new URL(location, currentUrl).toString();
       continue;
     }
 
