@@ -2452,7 +2452,7 @@ function ProductWizard() {
                   }}
                 >
                 <img
-                    src={URL.createObjectURL(img)}
+                    src={img instanceof Blob && img.type.startsWith('image/') ? URL.createObjectURL(img) : ''}
                     alt={`Preview ${index + 1}`}
                     style={{ width: '150px', height: '150px', objectFit: 'cover', display: 'block' }}
                 />
