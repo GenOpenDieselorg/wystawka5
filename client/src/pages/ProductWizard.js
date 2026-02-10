@@ -2472,7 +2472,7 @@ function ProductWizard() {
                   }}
                 >
                 <img
-                    src={(imagePreviewUrls[index] && imagePreviewUrls[index].startsWith('blob:')) ? imagePreviewUrls[index] : ''}
+                    src={(imagePreviewUrls[index] && typeof imagePreviewUrls[index] === 'string' && imagePreviewUrls[index].startsWith('blob:')) ? imagePreviewUrls[index] : ''}
                     alt={`Preview ${index + 1}`}
                     style={{ width: '150px', height: '150px', objectFit: 'cover', display: 'block' }}
                 />
