@@ -19,6 +19,7 @@ const { scanFile } = require('../utils/fileScanner'); // SECURITY: File scanning
 
 // SECURITY: Whitelist of allowed domains for remote image URLs (prevents SSRF)
 const { validatePath } = require('../utils/pathValidator'); // Import path validator
+const { validateUrl } = require('../utils/ssrfValidator');
 
 const ALLOWED_IMAGE_DOMAINS = [
   'allegro.pl',
@@ -42,8 +43,15 @@ const ALLOWED_MIME_TYPES = [
 ];
 
 // SECURITY: Validate remote image URL to prevent SSRF attacks
-const isAllowedImageUrl = (url) => {
+const isAllowedImageUrl = async (url) => {
   try {
+    // Validate protocol and IP/DNS (SSRF protection)
+    const validation = await validateUrl(url);
+    if (!validation.safe) {
+      console.warn(`Blocked potentially unsafe URL: ${url} (${validation.error})`);
+      return false;
+    }
+
     const parsed = new URL(url);
     
     // Only allow HTTPS
@@ -548,7 +556,7 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
           [productId, imageUrl, isPrimary]
         );
       } catch (error) {
-        console.error(`Error processing image ${originalFilename}:`, error);
+        console.error('Error processing image:', originalFilename, error);
         if (inputPath.includes('temp-') && fs.existsSync(inputPath)) {
           fs.unlinkSync(inputPath);
         }
@@ -595,8 +603,8 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
             return;
           }
 
-          if (!isAllowedImageUrl(url)) {
-            console.warn(`Blocked remote image from untrusted domain: ${url}`);
+          if (!(await isAllowedImageUrl(url))) {
+            console.warn('Blocked remote image from untrusted or unsafe domain:', url);
             return;
           }
 
@@ -623,7 +631,7 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
           const isPrimary = (!req.files || req.files.length === 0) && index === 0;
           await processAndSaveImage(tempPath, 'remote-image.jpg', isPrimary);
         } catch (error) {
-          console.error(`Error downloading remote image ${url}:`, error.message);
+          console.error('Error downloading remote image:', url, error.message);
         }
       });
       
@@ -669,7 +677,7 @@ router.post('/', authenticate, upload.array('images', 10), async (req, res) => {
             [productId, imageUrl, isPrimary]
           );
         } catch (error) {
-          console.error(`Error compressing image ${file.filename}:`, error);
+          console.error('Error compressing image:', file.filename, error);
           if (fs.existsSync(originalPath)) {
             fs.unlinkSync(originalPath);
           }
@@ -1128,7 +1136,7 @@ router.post('/:id/images', authenticate, checkResourceOwnership('products'), upl
             addedImages.push(result);
           }
         } catch (error) {
-          console.error(`Error downloading remote image ${url}:`, error.message);
+          console.error('Error downloading remote image:', url, error.message);
         }
       }
     }
@@ -1163,7 +1171,7 @@ router.post('/:id/images', authenticate, checkResourceOwnership('products'), upl
           
           addedImages.push({ id: result.insertId, url: imageUrl });
         } catch (error) {
-          console.error(`Error compressing image ${file.filename}:`, error);
+          console.error('Error compressing image:', file.filename, error);
           // SECURITY: Delete failed upload
           if (fs.existsSync(originalPath)) {
             fs.unlinkSync(originalPath);

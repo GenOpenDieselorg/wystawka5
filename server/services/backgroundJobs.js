@@ -6,6 +6,7 @@ const eanDbService = require('./eanDb');
 const walletService = require('./walletService'); // Dodano import walletService
 const path = require('path');
 const fs = require('fs');
+const sanitizeHtml = require('sanitize-html');
 
 const { decrypt } = require('../utils/encryption');
 
@@ -161,7 +162,7 @@ class BackgroundJobService {
                     if (!product.product_name || product.product_name.trim() === '') {
                         const h1Match = genResult.description.match(/<h1[^>]*>(.*?)<\/h1>/i);
                         if (h1Match && h1Match[1]) {
-                            const extractedName = h1Match[1].replace(/<[^>]*>/g, '').trim();
+                            const extractedName = sanitizeHtml(h1Match[1], { allowedTags: [], allowedAttributes: {} }).trim();
                             if (extractedName) {
                                 detectedProductName = extractedName;
                                 await db.execute('UPDATE products SET product_name = ? WHERE id = ?', [extractedName, productId]);

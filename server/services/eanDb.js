@@ -480,6 +480,12 @@ Format odpowiedzi (TYLKO JSON):
     // Normalize barcode (remove spaces)
     const cleanBarcode = barcode.replace(/\s/g, '');
     
+    // Validate barcode format (digits only, max 20 chars to be safe)
+    if (!/^\d+$/.test(cleanBarcode)) {
+      console.warn(`Invalid barcode format: ${cleanBarcode}`);
+      return null;
+    }
+
     if (!process.env.EAN_DB_JWT) {
       console.warn('EAN_DB_JWT is not set. Skipping EAN-DB lookup.');
       return null;

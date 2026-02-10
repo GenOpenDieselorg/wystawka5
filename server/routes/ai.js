@@ -31,7 +31,13 @@ const { scanFile } = require('../utils/fileScanner'); // SECURITY: File scanning
 // Generate product description from images using Vision AI
 router.post('/generate-description-from-images', authenticate, upload.array('images', 10), async (req, res) => {
   try {
-    const { productName, dimensions, price, templateId, productId, customInstructions } = req.body;
+    const { productName, dimensions, price, productId, customInstructions } = req.body;
+    // Validate templateId
+    let templateId = req.body.templateId;
+    if (templateId && typeof templateId !== 'string' && typeof templateId !== 'number') {
+      templateId = null; 
+    }
+    
     const userId = req.userId;
     let imageFiles = req.files || [];
     let existingImageFiles = []; // Track existing images separately for cleanup
@@ -130,7 +136,7 @@ router.post('/generate-description-from-images', authenticate, upload.array('ima
           }
         });
       } catch (readErr) {
-        console.error(`[Vision AI] Error reading image file ${file.path}:`, readErr.message);
+        console.error('[Vision AI] Error reading image file:', file.path, readErr.message);
       }
     }
 

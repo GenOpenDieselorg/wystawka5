@@ -386,7 +386,7 @@ async function generateDescription(productData, userId, templateId = null) {
             generatedSections = JSON.parse(jsonStr);
             console.log(`[AI Gen] Successfully parsed ${Object.keys(generatedSections).length} sections from JSON`);
         } catch (e) {
-            console.warn(`[AI Gen] Error parsing structured AI response for ${productName}:`, e.message);
+            console.warn('[AI Gen] Error parsing structured AI response for', productName, ':', e.message);
             console.log(`[AI Gen] Raw response (first 500 chars):`, aiResult.description.substring(0, 500));
             // Fallback: jeśli AI zwróciło plain text zamiast JSON, spróbujmy to jakoś uratować lub zwróćmy błąd
             // W tym przypadku po prostu wstawimy cały tekst do pierwszej sekcji tekstowej

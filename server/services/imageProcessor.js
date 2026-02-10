@@ -3,106 +3,20 @@ const path = require('path');
 const axios = require('axios');
 const sharp = require('sharp');
 const crypto = require('crypto');
-const dns = require('dns').promises;
+const { validateUrl } = require('../utils/ssrfValidator');
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const { callGeminiWithRetry } = require('../utils/geminiRetry');
 
 /**
- * Validate that a remote image URL is safe to request, to mitigate SSRF.
- * - Only allows http/https.
- * - Blocks localhost, private, link-local, and other non-public IP ranges.
- */
-async function validateRemoteImageUrl(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch (e) {
-    throw new Error('Invalid image URL format');
-  }
-
-  const protocol = parsed.protocol.toLowerCase();
-  if (protocol !== 'http:' && protocol !== 'https:') {
-    throw new Error('Only HTTP/HTTPS image URLs are allowed');
-  }
-
-  const hostname = parsed.hostname;
-  if (!hostname) {
-    throw new Error('Image URL must include a hostname');
-  }
-
-  // Optional allow-list of hostnames or domains; keep empty to allow all public hosts.
-  const allowedHosts = []; // e.g. ['images.example.com']
-  if (allowedHosts.length > 0) {
-    const lowerHost = hostname.toLowerCase();
-    const isAllowed = allowedHosts.some(allowed => {
-      return lowerHost === allowed || lowerHost.endsWith('.' + allowed);
-    });
-    if (!isAllowed) {
-      throw new Error('Image host is not allowed');
-    }
-  }
-
-  // Resolve hostname to IPs and block private/internal ranges.
-  let addresses = [];
-  try {
-    const aRecords = await dns.lookup(hostname, { all: true });
-    addresses = aRecords.map(r => r.address);
-  } catch (e) {
-    throw new Error('Unable to resolve image host');
-  }
-
-  const isPrivateIp = (ip) => {
-    // IPv4 checks
-    const v4Match = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (v4Match) {
-      const [ , a, b, c, d ] = v4Match.map(Number);
-      const addr = (a << 24) | (b << 16) | (c << 8) | d;
-      const inRange = (start, end) => addr >= start && addr <= end;
-
-      // 10.0.0.0/8
-      if (inRange(0x0A000000, 0x0AFFFFFF)) return true;
-      // 172.16.0.0/12
-      if (inRange(0xAC100000, 0xAC1FFFFF)) return true;
-      // 192.168.0.0/16
-      if (inRange(0xC0A80000, 0xC0A8FFFF)) return true;
-      // 127.0.0.0/8 (loopback)
-      if (inRange(0x7F000000, 0x7FFFFFFF)) return true;
-      // 169.254.0.0/16 (link-local)
-      if (inRange(0xA9FE0000, 0xA9FEFFFF)) return true;
-      // 0.0.0.0/8 (current network)
-      if (inRange(0x00000000, 0x00FFFFFF)) return true;
-      // 100.64.0.0/10 (carrier-grade NAT)
-      if (inRange(0x64400000, 0x647FFFFF)) return true;
-      // 192.0.0.0/24, 192.0.2.0/24, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24 (special-use/testing)
-      if (inRange(0xC0000000, 0xC00000FF)) return true;
-      if (inRange(0xC0000200, 0xC00002FF)) return true;
-      if (inRange(0xC6120000, 0xC613FFFF)) return true;
-      if (inRange(0xC6336400, 0xC63364FF)) return true;
-      if (inRange(0xCB007100, 0xCB0071FF)) return true;
-    }
-
-   // Basic IPv6 checks
-    const ipv6 = ip.toLowerCase();
-    if (ipv6 === '::1') return true; // loopback
-    if (ipv6.startsWith('fc') || ipv6.startsWith('fd')) return true; // unique local
-    if (ipv6.startsWith('fe80')) return true; // link-local
-
-    return false;
-  };
-
-  const hasPrivate = addresses.some(isPrivateIp);
-  if (hasPrivate) {
-    throw new Error('Image URL points to a private or disallowed network address');
-  }
-}
-
-/**
  * Downloads an image from a URL to a temporary path
  */
 async function downloadImage(url, tempDir) {
-  // Validate remote URL to prevent SSRF attacks
-  await validateRemoteImageUrl(url);
+  // Validate URL for SSRF
+  const validation = await validateUrl(url);
+  if (!validation.safe) {
+    throw new Error(`Invalid image URL: ${validation.error}`);
+  }
 
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });

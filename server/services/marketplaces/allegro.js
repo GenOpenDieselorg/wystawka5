@@ -4,7 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../../config/database');
 const allegroOAuth = require('../allegroOAuth');
-const { validatePath } = require('../../utils/pathValidator'); // Import path validator
+const { validatePath } = require('../../utils/pathValidator');
+const sanitizeHtml = require('sanitize-html'); // Import sanitize-html
+const { validateUrl } = require('../../utils/ssrfValidator');
 
 /**
  * Allegro Marketplace Adapter
@@ -12,52 +14,6 @@ const { validatePath } = require('../../utils/pathValidator'); // Import path va
 class AllegroAdapter extends BaseMarketplaceAdapter {
   constructor() {
     super('allegro');
-  }
-
-  /**
-   * Validate Allegro offer ID to prevent malformed or unsafe values
-   * being used in API request URLs.
-   *
-   * Allegro offer IDs are typically UUID-like strings. To be safe and
-   * compatible, we accept only non-empty strings composed of letters,
-   * digits, hyphens and underscores, with a reasonable maximum length.
-   */
-  _validateOfferId(offerId) {
-    if (typeof offerId !== 'string') {
-      throw new Error('Invalid offerId: must be a string');
-    }
-
-    const trimmedId = offerId.trim();
-
-    // Allow only alphanumeric characters, hyphens and underscores, 1-64 chars.
-    const OFFER_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
-
-    if (!OFFER_ID_REGEX.test(trimmedId)) {
-      throw new Error('Invalid offerId format');
-    }
-
-    return trimmedId;
-  }
-
-  /**
-   * Initializes the adapter with authentication data
-   * Validate Allegro offer ID to prevent using unexpected values in request URLs.
-   * Allows only alphanumeric characters and dashes, with a bounded length.
-   * Throws an error if the ID is invalid.
-   *
-   * @param {string} offerId
-   * @private
-   */
-  _validateOfferId(offerId) {
-    if (typeof offerId !== 'string' || offerId.length === 0) {
-      throw new Error('Invalid offerId: must be a non-empty string');
-    }
-
-    // Allegro offer IDs are typically UUID-like; enforce a conservative safe pattern.
-    const SAFE_OFFER_ID_REGEX = /^[A-Za-z0-9-]{1,64}$/;
-    if (!SAFE_OFFER_ID_REGEX.test(offerId)) {
-      throw new Error('Invalid offerId format');
-    }
   }
 
   _validateOfferId(offerId) {
@@ -135,31 +91,32 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
     if (!html) return '';
 
     console.log('[Allegro Sanitizer] Original length:', html.length);
-    let content = html;
-
-    // 1. Remove AI placeholders
-    content = content.replace(/\[ZDJĘCIE\]/gi, '');
-
-    // 2. Remove all attributes from tags (e.g. class, style, etc.)
-    // This removes everything after the tag name until the closing >
-    content = content.replace(/<([a-z0-9]+)\s+[^>]*>/gi, '<$1>');
-
-    // 3. Replace <br> with space (to avoid concatenation)
-    // Allegro API explicitly forbids <br> tags in description sections
-    content = content.replace(/<br\s*\/?>/gi, ' ');
-
-    // 4. Remove all tags EXCEPT allowed ones: h1, h2, p, ul, ol, li, b
-    const allowedTags = ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'];
     
-    // Replace disallowed tags with empty string (keeping content)
-    content = content.replace(/<\/?([a-z0-9]+)[^>]*>/gi, (match, tagName) => {
-        if (allowedTags.includes(tagName.toLowerCase())) {
-            return match;
-        }
-        // console.log('[Allegro Sanitizer] Removing disallowed tag:', tagName);
-        return ''; // Remove disallowed tag but keep content
+    // Sanitize using sanitize-html (Security fix)
+    let content = sanitizeHtml(html, {
+      allowedTags: ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'],
+      allowedAttributes: {}, // No attributes allowed
+      disallowedTagsMode: 'discard', // Remove disallowed tags but keep content (default)
+      nonTextTags: ['script', 'textarea', 'style', 'iframe', 'head', 'link', 'object', 'embed'] // Remove content of these tags
     });
     
+    // Remove AI placeholders if any
+    content = content.replace(/\[ZDJĘCIE\]/gi, '');
+    
+    // Replace <br> with space (since <br> is stripped by sanitize-html if not in allowed list, but we want spaces instead of concatenation)
+    // sanitize-html replaces <br> with space automatically? No, it removes it.
+    // So we should replace <br> BEFORE sanitize-html.
+    
+    // Pre-processing: replace <br> with space
+    content = html.replace(/<br\s*\/?>/gi, ' ');
+    
+    // Run sanitize-html again on pre-processed content
+    content = sanitizeHtml(content, {
+      allowedTags: ['h1', 'h2', 'p', 'ul', 'ol', 'li', 'b'],
+      allowedAttributes: {},
+      nonTextTags: ['script', 'textarea', 'style', 'iframe', 'head', 'link', 'object', 'embed']
+    });
+
     console.log('[Allegro Sanitizer] Final length:', content.length);
     return content;
   }
@@ -595,6 +552,13 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
       const isRemoteUrl = imageUrl.startsWith('http');
       
       if (isRemoteUrl) {
+        // SECURITY: Validate URL for SSRF
+        const validation = await validateUrl(imageUrl);
+        if (!validation.safe) {
+          console.warn('Allegro image upload: URL failed SSRF check:', imageUrl, validation.error);
+          return null;
+        }
+
         // METHOD 1: URL-based upload - send URL to Allegro and they download it
         console.log('Allegro image upload: Using URL-based upload for:', imageUrl);
         
@@ -945,6 +909,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Note: For bulk, we might want to use UUIDs but keeping it simple for now
   async changePrice(authData, offerId, amount, currency = 'PLN') {
     try {
+      this._validateOfferId(offerId); // SECURITY: Validate offerId format
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
       const commandId = require('crypto').randomUUID();
       
