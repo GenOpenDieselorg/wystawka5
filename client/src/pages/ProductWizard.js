@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {
@@ -152,6 +152,26 @@ function ProductWizard() {
   const [jobId, setJobId] = useState(null);
   const [jobProgress, setJobProgress] = useState({ progress: 0 });
   const [dragActive, setDragActive] = useState(false);
+
+  // SECURITY: Safely create preview URLs for uploaded images with strict validation
+  const ALLOWED_PREVIEW_TYPES = useMemo(() => ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'], []);
+  const imagePreviewUrls = useMemo(() => {
+    return images.map(img => {
+      if (!(img instanceof File) || !ALLOWED_PREVIEW_TYPES.includes(img.type)) {
+        return '';
+      }
+      return URL.createObjectURL(img);
+    });
+  }, [images, ALLOWED_PREVIEW_TYPES]);
+
+  // Cleanup object URLs when images change or component unmounts
+  useEffect(() => {
+    return () => {
+      imagePreviewUrls.forEach(url => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, [imagePreviewUrls]);
 
   const handleDrag = useCallback((e) => {
     e.preventDefault();
@@ -2452,7 +2472,7 @@ function ProductWizard() {
                   }}
                 >
                 <img
-                    src={img instanceof Blob && img.type.startsWith('image/') ? URL.createObjectURL(img) : ''}
+                    src={imagePreviewUrls[index] || ''}
                     alt={`Preview ${index + 1}`}
                     style={{ width: '150px', height: '150px', objectFit: 'cover', display: 'block' }}
                 />
@@ -2670,7 +2690,7 @@ function ProductWizard() {
                             {backgroundImage ? 'Zmień tło' : 'Wgraj tło'}
                         </Button>
                     </label>
-                    {backgroundImage && (
+                    {backgroundImage instanceof File && ALLOWED_PREVIEW_TYPES.includes(backgroundImage.type) && (
                         <Box sx={{ mt: 1 }}>
                             <img 
                                 src={URL.createObjectURL(backgroundImage)} 
