@@ -14,6 +14,24 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
     super('allegro');
   }
 
+  /**
+   * Validate Allegro offer ID to prevent malformed paths / SSRF-like issues.
+   * Allegro offer IDs are typically UUID-like strings; we conservatively allow
+   * only alphanumerics and dashes, with a bounded length.
+   */
+  _validateAllegroOfferId(offerId) {
+    if (typeof offerId !== 'string') {
+      throw new Error('Invalid offer ID: must be a string');
+    }
+    const trimmed = offerId.trim();
+    // Allow 1-64 characters: letters, digits, and hyphen
+    const idPattern = /^[A-Za-z0-9\-]{1,64}$/;
+    if (!idPattern.test(trimmed)) {
+      throw new Error('Invalid offer ID format');
+    }
+    return trimmed;
+  }
+
   _validateOfferId(offerId) {
     if (!offerId) throw new Error('Offer ID is required');
     const id = String(offerId);
@@ -820,6 +838,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   async deleteOffer(authData, externalId) {
     try {
       this._validateOfferId(externalId);
+      const safeExternalId = this._validateAllegroOfferId(externalId);
       let accessToken;
       
       // Extract access token from authData (can be integration object or token string)
@@ -835,7 +854,7 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
 
       // Delete offer using Allegro API
       // For product-offers, we use DELETE /sale/product-offers/{offerId}
-      await axios.delete(`https://api.allegro.pl/sale/product-offers/${externalId}`, {
+      await axios.delete(`https://api.allegro.pl/sale/product-offers/${safeExternalId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json'
@@ -860,8 +879,9 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   async getOffer(authData, offerId) {
     try {
       this._validateOfferId(offerId);
+      const safeOfferId = this._validateAllegroOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
-      const response = await axios.get(`https://api.allegro.pl/sale/product-offers/${offerId}`, {
+      const response = await axios.get(`https://api.allegro.pl/sale/product-offers/${safeOfferId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json'
@@ -877,9 +897,10 @@ class AllegroAdapter extends BaseMarketplaceAdapter {
   // Helper: Update offer (full PUT)
   async updateOffer(authData, offerId, payload) {
     try {
+      const safeOfferId = this._validateAllegroOfferId(offerId);
       this._validateOfferId(offerId);
       const accessToken = (authData && authData.access_token) ? authData.access_token : authData;
-      const response = await axios.patch(`https://api.allegro.pl/sale/product-offers/${offerId}`, payload, {
+      const response = await axios.patch(`https://api.allegro.pl/sale/product-offers/${safeOfferId}`, payload, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.allegro.public.v1+json',
