@@ -62,9 +62,20 @@ import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import axios from 'axios';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import sanitizeHtml from '../utils/sanitizeHtml';
+import DOMPurify from 'dompurify';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://api.wystawoferte.pl/api';
+
+// SECURITY: Strict DOMPurify config using allowlist approach (more secure than blocklist)
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: [
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'b', 'strong', 'i', 'em', 'u',
+    'ul', 'ol', 'li', 'a', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'sub', 'sup', 'blockquote', 'hr', 'img'
+  ],
+  ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'colspan', 'rowspan'],
+  ALLOW_UNKNOWN_PROTOCOLS: false
+};
 const BASE_OFFER_PRICE = 1.0; // Bazowa cena - koszt utworzenia produktu
 
 const steps = [
@@ -3014,7 +3025,7 @@ function ProductWizard() {
                                                     return (
                                                         <Box 
                                                             key={idx} 
-                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(part) }}
+                                                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(String(part), PURIFY_CONFIG) }}
                                                             sx={{
                                                                 '& h1': { fontSize: '2rem', fontWeight: 'bold', margin: '1rem 0', lineHeight: 1.2 },
                                                                 '& h2': { fontSize: '1.5rem', fontWeight: 'bold', margin: '0.8rem 0', lineHeight: 1.3 },
@@ -3039,7 +3050,7 @@ function ProductWizard() {
                                         : description;
                                     return (
                                         <Box 
-                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayText) }}
+                                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(String(displayText), PURIFY_CONFIG) }}
                                             sx={{
                                                 '& h1': { fontSize: '2rem', fontWeight: 'bold', margin: '1rem 0', lineHeight: 1.2 },
                                                 '& h2': { fontSize: '1.5rem', fontWeight: 'bold', margin: '0.8rem 0', lineHeight: 1.3 },
