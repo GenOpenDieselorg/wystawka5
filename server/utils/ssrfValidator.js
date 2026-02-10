@@ -4,6 +4,30 @@ const https = require('https');
 const { URL } = require('url');
 const axios = require('axios');
 
+// SECURITY: Allowed hostnames / base domains for outbound requests.
+// This can be customized via environment variable, for example:
+// SSRF_ALLOWED_HOSTS=example.com,api.example.com
+const rawAllowedHosts = process.env.SSRF_ALLOWED_HOSTS
+  ? process.env.SSRF_ALLOWED_HOSTS.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+  : [];
+
+// Helper to check if a hostname is in the allowed list, supporting subdomains.
+function isAllowedHost(hostname) {
+  if (!hostname) return false;
+  const lowerHost = hostname.toLowerCase();
+
+  // If no explicit allow-list is configured, deny by default to avoid SSRF.
+  if (rawAllowedHosts.length === 0) {
+    return false;
+  }
+
+  return rawAllowedHosts.some(allowed => {
+    if (lowerHost === allowed) return true;
+    // Allow subdomains: *.allowed
+    return lowerHost.endsWith('.' + allowed);
+  });
+}
+
 /**
  * Validates if a URL is safe to request (SSRF protection).
  * - Checks protocol (http/https)
@@ -180,6 +204,11 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       throw new Error(`SSRF Prevention: Invalid protocol: ${parsedUrl.protocol}`);
     }
 
+    // SECURITY: Host allow-list check to prevent SSRF to arbitrary domains
+    if (!isAllowedHost(parsedUrl.hostname)) {
+      throw new Error(`SSRF Prevention: Disallowed host: ${parsedUrl.hostname}`);
+    }
+
     // SECURITY: Pre-request DNS validation (defense-in-depth alongside connection-time safeLookup)
     // This explicitly validates the resolved IP before initiating the request,
     // preventing SSRF even if the HTTP agent lookup is somehow bypassed.
@@ -225,7 +254,20 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       }
 
       // Resolve relative URLs
-      currentUrl = new URL(location, currentUrl).toString();
+      const nextUrl = new URL(location, currentUrl).toString();
+
+      // SECURITY: Re-validate host on redirect target to prevent SSRF via redirects
+      let nextParsed;
+      try {
+        nextParsed = new URL(nextUrl);
+      } catch (e) {
+        throw new Error(`SSRF Prevention: Invalid redirect URL: ${nextUrl}`);
+      }
+      if (!isAllowedHost(nextParsed.hostname)) {
+        throw new Error(`SSRF Prevention: Disallowed redirect host: ${nextParsed.hostname}`);
+      }
+
+      currentUrl = nextUrl;
       continue;
     }
 
