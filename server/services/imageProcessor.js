@@ -141,16 +141,21 @@ async function processImage(options) {
             throw new Error('Background image required for replace_bg');
          }
 
-         // SECURITY: Verify path is safe before reading
-         const resolvedBgPath = path.resolve(bgImage.path);
+         // SECURITY: Sanitize path to prevent directory traversal attacks
+         const rawBgPath = String(bgImage.path);
+         if (rawBgPath.includes('..') || rawBgPath.includes('\0')) {
+             throw new Error('Security Error: Background image path contains illegal characters');
+         }
+
+         const resolvedBgPath = path.resolve(rawBgPath);
          const projectRoot = path.resolve(process.cwd());
          const tempDir = path.resolve(os.tmpdir());
 
-         if (!resolvedBgPath.startsWith(projectRoot) && !resolvedBgPath.startsWith(tempDir)) {
+         if (!resolvedBgPath.startsWith(projectRoot + path.sep) && !resolvedBgPath.startsWith(tempDir + path.sep)) {
              throw new Error('Security Error: Background image path traversal attempt');
          }
 
-         // SECURITY: Use resolvedBgPath (validated) instead of raw bgImage.path to prevent path traversal
+         // SECURITY: Use resolvedBgPath (validated) to prevent path traversal
          const bgBuffer = fs.readFileSync(resolvedBgPath);
          const base64Bg = bgBuffer.toString('base64');
 

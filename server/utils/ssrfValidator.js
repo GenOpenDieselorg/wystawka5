@@ -180,6 +180,14 @@ async function safeAxiosRequest(config, maxRedirects = 5) {
       throw new Error(`SSRF Prevention: Invalid protocol: ${parsedUrl.protocol}`);
     }
 
+    // SECURITY: Pre-request DNS validation (defense-in-depth alongside connection-time safeLookup)
+    // This explicitly validates the resolved IP before initiating the request,
+    // preventing SSRF even if the HTTP agent lookup is somehow bypassed.
+    const preValidation = await validateUrl(currentUrl);
+    if (!preValidation.safe) {
+      throw new Error(`SSRF Prevention: ${preValidation.error}`);
+    }
+
     // Prepare config for this request - agents enforce IP validation at connection time
     const requestConfig = {
       ...config,

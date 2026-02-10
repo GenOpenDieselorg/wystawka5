@@ -421,16 +421,19 @@ router.post('/edit-image', authenticate, upload.single('backgroundImage'), async
       const mimeType = backgroundImageFile.mimetype || 'image/jpeg';
       const scanResult = await scanFile(backgroundImageFile.path, mimeType);
       if (!scanResult.valid) {
-        // Clean up malicious file
-        const resolvedPath = path.resolve(backgroundImageFile.path);
-        const projectRoot = path.resolve(process.cwd());
-        const tempDir = path.resolve(os.tmpdir());
+        // SECURITY: Sanitize path to prevent directory traversal before cleanup
+        const rawFilePath = String(backgroundImageFile.path);
+        if (!rawFilePath.includes('..') && !rawFilePath.includes('\0')) {
+          const resolvedPath = path.resolve(rawFilePath);
+          const projectRoot = path.resolve(process.cwd());
+          const tempDir = path.resolve(os.tmpdir());
 
-        // Only unlink if path is safe (within project or temp) - use resolvedPath to prevent path traversal
-        if (resolvedPath.startsWith(projectRoot + path.sep) || resolvedPath.startsWith(tempDir + path.sep)) {
-             if (fs.existsSync(resolvedPath)) {
-                fs.unlinkSync(resolvedPath);
-             }
+          // Only unlink if path is safe (within project or temp)
+          if (resolvedPath.startsWith(projectRoot + path.sep) || resolvedPath.startsWith(tempDir + path.sep)) {
+               if (fs.existsSync(resolvedPath)) {
+                  fs.unlinkSync(resolvedPath);
+               }
+          }
         }
         
         return res.status(400).json({ 

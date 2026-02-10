@@ -68,8 +68,11 @@ function readMagicBytes(filePath, length = 16) {
   const projectRoot = path.resolve(process.cwd());
   const tempDir = path.resolve(os.tmpdir());
   
-  // Allow paths in project root or system temp
-  if (!resolvedPath.startsWith(projectRoot) && !resolvedPath.startsWith(tempDir)) {
+  // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+  // e.g., /app-evil/file would match startsWith('/app') but not startsWith('/app/')
+  const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+  const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+  if (!isInProjectRoot && !isInTempDir) {
       throw new Error('Access denied: File path outside allowed directories');
   }
 
@@ -164,17 +167,13 @@ async function scanFile(filePath, mimeType, options = {}) {
     const projectRoot = path.resolve(process.cwd());
     const tempDir = path.resolve(os.tmpdir());
     
-    // Check if path starts with allowed roots
-    // Note: On Windows, paths are case-insensitive, but startWith is case-sensitive.
-    // Ideally we should handle case sensitivity, but normalization helps.
-    // For now, simple check.
-    const isAllowed = resolvedPath.startsWith(projectRoot) || resolvedPath.startsWith(tempDir);
+    // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+    // e.g., /app-evil/file would match startsWith('/app') but not startsWith('/app/')
+    // Note: On Windows, paths are case-insensitive, but path.resolve normalizes them.
+    const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+    const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
     
-    if (!isAllowed) {
-        // Special case: Docker or other environments where /tmp might be different
-        // If it's an absolute path and exists, and we are sure it's not sensitive...
-        // But for safety, we strictly enforce project root or system temp.
-        // If multer saves somewhere else, this needs config.
+    if (!isInProjectRoot && !isInTempDir) {
         return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
     }
 
@@ -239,7 +238,10 @@ async function quickScan(filePath, mimeType) {
     const projectRoot = path.resolve(process.cwd());
     const tempDir = path.resolve(os.tmpdir());
     
-    if (!resolvedPath.startsWith(projectRoot) && !resolvedPath.startsWith(tempDir)) {
+    // SECURITY: Use path separator suffix to prevent prefix-bypass attacks
+    const isInProjectRoot = resolvedPath === projectRoot || resolvedPath.startsWith(projectRoot + path.sep);
+    const isInTempDir = resolvedPath === tempDir || resolvedPath.startsWith(tempDir + path.sep);
+    if (!isInProjectRoot && !isInTempDir) {
        return { valid: false, errors: ['Access denied: File path outside allowed directories'] };
     }
 
